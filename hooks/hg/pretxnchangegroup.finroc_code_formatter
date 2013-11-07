@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# You received this file as part of Finroc
+# A framework for intelligent robot control
+#
+# Copyright (C) Finroc GbR (finroc.org)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+#----------------------------------------------------------------------
+# \file    pretxnchangegroup.finroc_code_formatter
+# 
+# \author  Tobias Foehst
+# 
+# \date    2010-04-27
+# 
+# This hook uses the finroc_code_formatter to enforce valid formatted
+# source code in changegroups committed to our repositories.
+#----------------------------------------------------------------------
+
+export HOME=$(printf "%s\n%s\n" "$PWD" "$SCRIPT_FILENAME" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
+
+REPOSITORY=$(basename $(pwd))
+RELEVANT=0
+echo ${REPOSITORY} | grep -q ^finroc_ && RELEVANT=1
+echo ${REPOSITORY} | grep -q ^rrlib_ && RELEVANT=1
+echo ${REPOSITORY} | grep -q ^make_builder$ && RELEVANT=1
+
+[[ $RELEVANT == 0 ]] && exit 0
+
+
+# setup finroc environment from _cloned_ version in repository
+cd $HOME/finroc &> /dev/null
+hg update -C -q
+source scripts/setenv &> /dev/null
+cd - &> /dev/null
+
+if [ -z $FINROC_HOME ] ; then
+    echo 1>&2
+    echo "Could not setup finroc environment. Aborting!" 1>&2
+    echo "Please inform your administrator." 1>&2
+    echo 1>&2
+    exit 1
+fi
+
+
+hg update -C -q
+FORMATTER_OUTPUT=$(finroc_code_formatter -f -a -v 2>&1)
+if [ $? -ne 0 ] ; then
+    echo 1>&2
+    echo "Could not run finroc_code_formatter:" 1>&2
+    echo $FORMATTER_OUTPUT 1>&2
+    echo "Aborting! Please inform your administrator." 1>&2
+    echo 1>&2
+    hg update -C null -q
+    exit 1
+fi
+hg update -C null -q
+
+FORMATTED_FILES=$(echo "$FORMATTER_OUTPUT" | grep -i formatted | sed -e 's%formatted %%i')
+
+if [ -z "$FORMATTED_FILES" ] ; then
+    exit 0
+fi
+
+echo 1>&2
+echo "ATTENTION" 1>&2
+echo 1>&2
+echo "Commits to this repository are only allowed for source files" 1>&2
+echo "meeting the project's standards on formatting and indentation." 1>&2
+echo "Format checking has failed for the following files after ap-" 1>&2
+echo "plying the changesets you are just trying to push:" 1>&2
+echo 1>&2
+echo $FORMATTED_FILES 1>&2
+echo 1>&2
+echo "This should not happen as a similar check is usually applied" 1>&2
+echo "before each commit. Please contact your administrator." 1>&1
+echo 1>&2
+
+exit 1

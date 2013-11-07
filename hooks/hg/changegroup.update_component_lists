@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# 
+#----------------------------------------------------------------------
+# \file    changegroup.update_component_lists
+# 
+# \author  Tobias Foehst
+# 
+# \date    2011-06-30
+# 
+# This hook calls finroc_generate_component_lists for the changed
+# repository.
+#----------------------------------------------------------------------
+
+export HOME=$(printf "%s\n%s\n" "$PWD" "$SCRIPT_FILENAME" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
+
+REPOSITORY=$(basename $(pwd))
+RELEVANT=0
+echo ${REPOSITORY} | grep -q ^finroc_ && RELEVANT=1
+echo ${REPOSITORY} | grep -q ^rrlib_ && RELEVANT=1
+echo ${REPOSITORY} | grep -q ^make_builder$ && RELEVANT=1
+
+[[ $RELEVANT == 0 ]] && exit 0
+
+
+# setup finroc environment from _cloned_ version in repository
+cd $HOME/finroc &> /dev/null
+hg update -C -q
+source scripts/setenv &> /dev/null
+cd - &> /dev/null
+
+if [ -z $FINROC_HOME ] ; then
+    echo 1>&2
+    echo "Could not setup finroc environment. Aborting!" 1>&2
+    echo "Please inform your administrator." 1>&2
+    echo 1>&2
+    exit 1
+fi
+
+finroc_generate_component_lists $HOME/etc/components.pl $REPOSITORY &> /dev/null
+
+exit 0

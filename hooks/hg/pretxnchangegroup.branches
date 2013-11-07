@@ -1,0 +1,87 @@
+#!/usr/bin/perl -w
+
+# You received this file as part of Finroc
+# A framework for intelligent robot control
+#
+# Copyright (C) Finroc GbR (finroc.org)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+#----------------------------------------------------------------------
+# \file    pretxnchangegroup.branches
+# 
+# \author  Tobias Foehst
+# 
+# \date    2013-10-24
+# 
+# This hook checks if creation of a named branch is included in this
+# changegroup.
+#----------------------------------------------------------------------
+
+use strict;
+
+use Env 'SCRIPT_FILENAME';
+use Env 'REMOTE_ADDR';
+use Env 'REMOTE_PORT';
+
+use Cwd;
+use File::Basename;
+
+my $home = $1 if sprintf("%s\0%s", getcwd, $SCRIPT_FILENAME) =~ m/^(.*).*\0\1/s;
+
+system "hg --cwd $home/finroc update -C -q";
+if ($?)
+{
+    printf STDERR "\n";
+    printf STDERR "Could not update finroc environment. Aborting!\n";
+    printf STDERR "Please inform your administrator.\n";
+    printf STDERR "\n";
+    system "$home/hooks/hg/changegroup.cleanup";
+    exit 1;
+}
+
+my $transaction = join ".", basename(getcwd), $REMOTE_ADDR, $REMOTE_PORT;
+my $current_tip_file = join ".", "/tmp/.hg.current_tip", $transaction;
+unless (-f $current_tip_file)
+{
+    printf STDERR "\n";
+    printf STDERR "Could not read transaction data. Aborting!\n";
+    printf STDERR "Please inform your administrator.\n";
+    printf STDERR "\n";
+    system "$home/hooks/hg/changegroup.cleanup";
+    exit 1;
+}
+
+my $first_new_rev = int(`cat $current_tip_file`) + 1;
+my $last_new_rev = int(`hg tip --template {rev}`);
+
+foreach my $rev ($first_new_rev..$last_new_rev)
+{
+    my $node = join "", map { chomp; $_ } `hg log --template "{node}" -r $rev`;
+    my @parents = map { chomp; $_ } `hg parent --template "{node}\n" -r $rev`;
+    next unless @parents;
+    push @parents, "";
+    system "export HG_NODE=$node ; export HG_PARENT1=$parents[0] ; export HG_PARENT2=$parents[1] ; $home/finroc/scripts/hooks/hg/pretxncommit.branches";
+    if ($?)
+    {
+	printf STDERR "ATTENTION\n\n";
+	printf STDERR "Check pretxncommit.branches failed for\n";
+	printf STDERR join "", `hg log -r $rev`;
+	system "$home/hooks/hg/changegroup.cleanup";
+	exit 1;
+    }
+}
+
+exit 0;
