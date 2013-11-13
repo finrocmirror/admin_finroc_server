@@ -30,9 +30,20 @@
 # source code in changegroups committed to our repositories.
 #----------------------------------------------------------------------
 
-export HOME=$(printf "%s\n%s\n" "$PWD" "$SCRIPT_FILENAME" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
+function abs_path
+{
+    SOURCE="$1"
+    while [ -h "$SOURCE" ] ; do
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    echo "$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+}
 
-REPOSITORY=$(basename $(pwd))
+export HOME=$(printf "%s\n%s\n" "$(abs_path $PWD)" "$(abs_path $SCRIPT_FILENAME)" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
+
+REPOSITORY=$(basename $PWD)
 RELEVANT=0
 echo ${REPOSITORY} | grep -q ^finroc_ && RELEVANT=1
 echo ${REPOSITORY} | grep -q ^rrlib_ && RELEVANT=1
@@ -41,7 +52,7 @@ echo ${REPOSITORY} | grep -q ^make_builder$ && RELEVANT=1
 [[ $RELEVANT == 0 ]] && exit 0
 
 
-# setup finroc environment from _cloned_ version in repository
+# setup finroc environment from _cloned_ version
 cd $HOME/finroc &> /dev/null
 hg update -C -q
 source scripts/setenv &> /dev/null

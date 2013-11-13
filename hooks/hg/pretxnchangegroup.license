@@ -35,10 +35,10 @@ use Env 'SCRIPT_FILENAME';
 use Env 'REMOTE_ADDR';
 use Env 'REMOTE_PORT';
 
-use Cwd;
+use Cwd qw(getcwd abs_path);
 use File::Basename;
 
-my $home = $1 if sprintf("%s\0%s", getcwd, $SCRIPT_FILENAME) =~ m/^(.*).*\0\1/s;
+my $home = $1 if sprintf("%s\0%s", getcwd, abs_path $SCRIPT_FILENAME) =~ m/^(.*).*\0\1/s;
 
 system "hg --cwd $home/finroc update -C -q";
 if ($?)
