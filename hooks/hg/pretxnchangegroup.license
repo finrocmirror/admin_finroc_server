@@ -40,6 +40,14 @@ use File::Basename;
 
 my $home = $1 if sprintf("%s\0%s", getcwd, abs_path $SCRIPT_FILENAME) =~ m/^(.*).*\0\1/s;
 
+my $repository = basename(getcwd);
+my $relevant = 0;
+$relevant = 1 if $repository =~ /^finroc_/;
+$relevant = 1 if $repository =~ /^rrlib_/;
+$relevant = 1 if $repository =~ /^make_builder$/;
+
+exit 0 unless $relevant;
+
 system "hg --cwd $home/finroc update -C -q";
 if ($?)
 {
