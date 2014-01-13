@@ -1,0 +1,268 @@
+#!/usr/bin/perl -w
+
+# You received this file as part of Finroc
+# A framework for intelligent robot control
+#
+# Copyright (C) Finroc GbR (finroc.org)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+#----------------------------------------------------------------------
+# \file    update_component_lists
+#
+# \author  Tobias Foehst
+#
+# \date    2011-06-30
+#
+#----------------------------------------------------------------------
+
+use strict;
+
+use Env '$FINROC_HOME';
+use Data::Dumper;
+
+use XML::Simple;
+use File::Basename;
+
+use lib "$FINROC_HOME/scripts/perl";
+use lib "$FINROC_HOME/../lib";
+use FINROC::messages;
+use FINROC::getopt;
+use FINROC::sources;
+use FINROC::components;
+use FINROC::scm;
+use FINROC::utilities;
+use FINROC::dependencies;
+
+############################
+##  Command line options  ##
+############################
+
+SetHelp "<config_file> [repository]",
+{
+  "-p, --purge" => "purge all components list for a clean rewrite"
+},
+undef;
+
+ParseCommandLine [ "purge" ], undef;
+
+# non-optional arguments
+ERRORMSG sprintf "<config_file> not specified. Use %s --help for more information.\n", ScriptName unless defined $ARGV[0];
+
+###########################################
+##  Read and process configuration file  ##
+###########################################
+
+our %config;
+require shift @ARGV;
+$config{scm_precedence} = [ keys %{$config{scm}} ] unless exists $config{scm_precedence};
+ERRORMSG "Output directory not configured!" unless defined $config{output} && $config{output} ne "";
+
+#########################################
+##  Determine repositories to process  ##
+#########################################
+
+my $repository = shift @ARGV;
+
+INFOMSG "Updating complete database. This may take some time... \n" unless defined $repository;
+my $padding = defined $repository ? "" : "  ";
+
+my @include_patterns;
+foreach my $distribution (keys %{$config{distributions}})
+{
+    my $categories = $config{distributions}{$distribution}{categories};
+    next unless $categories;
+    map { push @include_patterns, exists $$_{include} && @{$$_{include}} ? @{$$_{include}} : { name => '.*' } } @{$categories}{keys %{$categories}};
+}
+
+sub RepositoryIsRelevant($)
+{
+    my ($repository) = @_;
+
+    return 1 unless @include_patterns;
+    return 1 if grep { (not exists $$_{name}) || $repository =~ qr/^$$_{name}$/ } @include_patterns;
+    return 0
+}
+
+my @repositories;
+if (defined $repository)
+{
+    ERRORMSG "$repository does not exist!\n" unless grep { -d "$config{repositories}/$config{scm}{$_}{subdir}/$repository" } @{$config{scm_precedence}};
+    exit 0 unless RepositoryIsRelevant $repository;
+    push @repositories, $repository;
+}
+push @repositories, grep { RepositoryIsRelevant $_ } map { chomp; $_ } map { `ls "$config{repositories}/$config{scm}{$_}{subdir}"` } @{$config{scm_precedence}} unless @repositories;
+
+######################################################################
+##  Extend configuration by possible dependencies to configuration  ##
+######################################################################
+
+sub FillDependenciesList($$)
+{
+    my ($list, $sources) = @_;
+
+    foreach my $source (@$sources)
+    {
+        my ($prefix, $distribution, @categories) = split " ", $source;
+        foreach my $url (map { sprintf "%s.xml", join "/", $prefix, $distribution, $_ } @categories)
+        {
+            my $xml_content = join "", `curl -fsk $url`;
+            next if $xml_content eq "";
+            my $xml = XMLin $xml_content;
+            map { $$list{$_} = 1 } keys %{$$xml{component}};
+        }
+    }
+}
+
+foreach my $distribution (keys %{$config{distributions}})
+{
+    $config{distributions}{$distribution}{possible_dependencies} = {};
+    FillDependenciesList $config{distributions}{$distribution}{possible_dependencies}, $config{distributions}{$distribution}{dependency_sources};
+    foreach my $category (keys %{$config{distributions}{$distribution}{categories}})
+    {
+        %{$config{distributions}{$distribution}{categories}{$category}{possible_dependencies}} = %{$config{distributions}{$distribution}{possible_dependencies}};
+        FillDependenciesList $config{distributions}{$distribution}{categories}{$category}{possible_dependencies}, $config{distributions}{$distribution}{categories}{$category}{dependency_sources};
+    }
+}
+
+DEBUGMSG sprintf "config: %s\n", Dumper \%config;
+
+############################
+##  Process repositories  ##
+############################
+
+my @components;
+foreach my $repository (@repositories)
+{
+    INFOMSG sprintf "%sUpdating %s ...\n", $padding, $repository;
+
+    my $scm = ${[ grep { -d "$config{repositories}/$config{scm}{$_}{subdir}/$repository" } @{$config{scm_precedence}} ]}[0];
+    die unless defined $scm;
+
+    DEBUGMSG "scm: $scm\n";
+
+    my $repository_directory = join "/", $config{repositories}, $config{scm}{$scm}{subdir}, $repository;
+
+    my $working_copy = "/tmp/working_copy.$$";
+    FINROC::scm::Checkout $scm, "file://$repository_directory", undef, $working_copy, undef, undef;
+
+    my @branches = FINROC::scm::GetBranches $working_copy, undef, undef;
+
+    if (@branches)
+    {
+        foreach my $branch (@branches)
+        {
+            FINROC::scm::SwitchBranch $working_copy, $branch, undef, undef;
+
+            my $license = join "", map { chomp;$_ } lc basename `ls \"$working_copy\"/LICENSE.* 2> /dev/null` || "none";
+            $license =~ s/^license.//;
+
+            my %component = ( name => $repository,
+                              scm => $scm,
+                              branch => $branch,
+                              license => $license,
+                              url => sprintf("%s/%s", $config{scm}{$scm}{base_url}, $repository),
+                              manifest => FINROC::scm::GetManifestFromWorkingCopy($working_copy),
+                              disk_usage => join("", map { chomp; $_ } `du -s \"$working_copy\" 2> /dev/null | cut -f1`) );
+
+            ($component{dependencies}, $component{optional_dependencies}) = FINROC::dependencies::DependenciesFromWorkingCopy $working_copy, $repository;
+
+            DEBUGMSG Dumper \%component;
+
+            push @components, \%component;
+        }
+    }
+    else
+    {
+        push @components, { name => $repository,
+                            scm => $scm,
+                            branch => FINROC::scm::GetDefaultBranch $scm,
+                            license => "none",
+                            url => sprintf("%s/%s", $config{scm}{$scm}{base_url}, $repository),
+                            manifest => "",
+                            disk_usage => join("", map { chomp; $_ } `du -s \"$working_copy\" 2> /dev/null | cut -f1`),
+                            dependencies => [],
+                            optional_dependencies => [] };
+    }
+
+    system "rm -rf $working_copy";
+
+    INFOMSG sprintf "%sDone\n", $padding;
+}
+
+INFOMSG "Done.\n" unless defined $repository;
+
+foreach my $distribution (keys $config{distributions})
+{
+    my $categories = $config{distributions}{$distribution}{categories};
+    foreach my $category (keys %{$categories})
+    {
+        my $include_patterns = $$categories{$category}{include};
+        my $exclude_patterns = $$categories{$category}{exclude};
+
+        my %output;
+        my $init_include = (not defined $include_patterns) || not @{$include_patterns};
+        foreach my $component (@components)
+        {
+            my $include = $init_include;
+            foreach my $pattern (@{$include_patterns})
+            {
+                next if grep { exists $$pattern{$_} && $$component{$_} !~ qr/^$$pattern{$_}$/ } keys %{$pattern};
+                $include = 1;
+            }
+            foreach my $pattern (@{$exclude_patterns})
+            {
+                next if grep { exists $$pattern{$_} && $$component{$_} !~ qr/^$$pattern{$_}$/ } keys %{$pattern};
+                $include = 0;
+            }
+            next unless $include;
+
+            next if exists $output{$$component{name}} && $$component{branch} ne FINROC::scm::GetDefaultBranch($$component{scm});
+
+            $output{$$component{name}} = $component;
+            map { $output{$$component{name}}{$_} = join " ", grep { exists $$categories{$category}{possible_dependencies}{$_} } split " ", $$component{$_} } ('dependencies', 'optional_dependencies');
+        }
+
+        my $filename = sprintf "%s.xml", join "/", $config{output}, $distribution, $category;
+
+        if (defined GetCommandLineOption "purge" && -e $filename)
+        {
+            INFOMSG "Purging $filename\n";
+            unlink $filename;
+        }
+
+        next unless %output;
+
+        INFOMSG "Writing to $filename ...\n";
+        my $xml = -e $filename ? XMLin($filename,
+                                       SuppressEmpty => 1,
+                                       NormalizeSpace => 2,
+                                       ForceArray => [ 'component' ]) : {} or ERRORMSG "$!\n";
+        map { $$xml{component}{$_} = $output{$_} } keys %output;
+
+        my $directory = dirname $filename;
+        system "mkdir -p \"$directory\"" unless -d $directory;
+        system "chmod g+wx \"$directory\" 2> /dev/null";
+        open COMPONENTS_XML, ">$filename" or ERRORMSG "Could not write to components file: $!\n";
+        print COMPONENTS_XML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+        print COMPONENTS_XML "<!DOCTYPE components PUBLIC \"-//FINROC//DTD components 1.0\" \"http://finroc.org/xml/1.0/components.dtd\">\n";
+        print COMPONENTS_XML XMLout($xml, RootName => "components", NoAttr => 1);
+        close COMPONENTS_XML;
+        system "chmod g+w \"$filename\" 2> /dev/null";
+        INFOMSG "Done\n";
+    }
+}
+
+exit 0;

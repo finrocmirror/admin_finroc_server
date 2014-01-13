@@ -21,8 +21,7 @@
 # 
 # \date    2011-06-30
 # 
-# This hook calls finroc_generate_component_lists for the changed
-# repository.
+# This hook calls update_component_lists for the changed repository.
 #----------------------------------------------------------------------
 
 function abs_path
@@ -51,6 +50,7 @@ echo ${REPOSITORY} | grep -q ^make_builder$ && RELEVANT=1
 cd $HOME/finroc &> /dev/null
 hg update -C -q
 source scripts/setenv &> /dev/null
+chmod g+w .finroc.conf 2> /dev/null
 cd - &> /dev/null
 
 if [ -z $FINROC_HOME ] ; then
@@ -61,6 +61,6 @@ if [ -z $FINROC_HOME ] ; then
     exit 1
 fi
 
-finroc_generate_component_lists $HOME/etc/components.pl $REPOSITORY &> /dev/null
+$HOME/bin/update_component_lists $HOME/etc/components.pl $REPOSITORY &> /dev/null
 
 exit 0

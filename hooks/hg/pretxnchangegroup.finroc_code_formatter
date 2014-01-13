@@ -56,6 +56,7 @@ echo ${REPOSITORY} | grep -q ^make_builder$ && RELEVANT=1
 cd $HOME/finroc &> /dev/null
 hg update -C -q
 source scripts/setenv &> /dev/null
+chmod g+w .finroc.conf 2> /dev/null
 cd - &> /dev/null
 
 if [ -z $FINROC_HOME ] ; then
