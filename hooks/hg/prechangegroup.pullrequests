@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# You received this file as part of Finroc
+# A framework for intelligent robot control
+#
+# Copyright (C) Finroc GbR (finroc.org)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# 
+#----------------------------------------------------------------------
+# \file    prechangegroup.pullrequest
+# 
+# \author  Tobias Foehst
+# 
+# \date    2013-11-18
+# 
+# This hook notifies about maintained repositories and the possibility
+# to create and use a fork with pull requests.
+#----------------------------------------------------------------------
+
+function abs_path
+{
+    SOURCE="$1"
+    while [ -h "$SOURCE" ] ; do
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    echo "$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+}
+
+export HOME=$(printf "%s\n%s\n" "$(abs_path $PWD)" "$(abs_path $SCRIPT_FILENAME)" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
+
+REPOSITORY=$(basename $PWD)
+
+grep -q '^allow_push = ' .hg/hgrc && exit 0
+grep '^allow_write = ' .hg/hgrc | grep -q " $REMOTE_USER\(, \)\?" && exit 0
+
+TRAC_BASE_URL=$(grep '^base_url = ' $HOME/trac/conf/trac.ini | cut -d\  -f3)
+HG_BASE_URL=$(perl -e "require '$HOME/etc/components.pl'; print \$config{scm}{hg}{base_url};")
+
+echo "authorization failed" >&2
+echo >&2
+echo "ATTENTION" >&2
+echo >&2
+echo "You are not allowed to push directly to this repository." >&2
+echo "Instead, fork this repository, push your changes there and" >&2
+echo "create a new pull request that will be handled by the repo-" >&2
+echo "sitory's maintainer." >&2
+echo >&2
+echo "To fork this repository visit the following URL:" >&2
+echo "$TRAC_BASE_URL/repository/fork/$REPOSITORY" >&2
+echo >&2
+echo "Afterwards, push your changes to your fork:" >&2
+echo "e.g. hg push $HG_BASE_URL/$USER/$REPOSITORY" >&2
+echo >&2
+echo "And finally, create a new pull request in trac." >&2
+echo >&2
+
+exit 1
