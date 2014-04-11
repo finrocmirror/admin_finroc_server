@@ -127,15 +127,18 @@ sub ProcessTargets($$$$$)
 
     foreach (@{$targets})
     {
+        my @source_files = ResolveSourceFiles $directory, $$_{sources}{content}, $$_{sources}{exclude};
+
         my $mandatory_list = $mandatory;
         $mandatory_list = $optional if exists $$_{optional} and $$_{optional} eq "true";
-        ProcessSourceFiles $language, [ ResolveSourceFiles $directory, $$_{sources}{content}, $$_{sources}{exclude} ], $mandatory_list, $optional;
+        $mandatory_list = $optional if grep { /\/examples\// } @source_files;
+        ProcessSourceFiles $language, [ @source_files ], $mandatory_list, $optional;
     }
 }
 
-sub ProcessFinrocFiles($$)
+sub ProcessFinrocFiles($$$)
 {
-    my ($files, $mandatory) = @_;
+    my ($files, $mandatory, $optional) = @_;
 
     foreach (@$files)
     {
@@ -154,11 +157,14 @@ sub ProcessFinrocFiles($$)
 
         next unless exists $$xml{FinstructableGroup};
 
+        my $dependencies = $mandatory;
+        $dependencies = $optional if /\/examples\//;
+
         foreach my $dependency (grep { $_ } split /,| /, $$xml{FinstructableGroup}{dependencies})
         {
             while ($dependency)
             {
-                push @$mandatory, $dependency;
+                push @$dependencies, $dependency;
                 my $dependency_old = $dependency;
                 $dependency =~ s/(finroc|rrlib)_[^_]+$//;
                 last if $dependency eq $dependency_old;
@@ -170,14 +176,14 @@ sub ProcessFinrocFiles($$)
             next unless defined $$xml{FinstructableGroup}{element}{$element}{parameters}{'XML file'};
             my $file = join "", map { $_ =~ s/^sources\/cpp\///; $_ } $$xml{FinstructableGroup}{element}{$element}{parameters}{'XML file'};
             my $dependency = DependencyFromInclude $file;
-            push @$mandatory, $dependency if $dependency;
+            push @$dependencies, $dependency if $dependency;
         }
     }
 }
 
-sub ProcessSimVis3DResourceFiles($$)
+sub ProcessSimVis3DResourceFiles($$$)
 {
-    my ($files, $mandatory) = @_;
+    my ($files, $mandatory, $optional) = @_;
 
     foreach my $file (@$files)
     {
@@ -191,13 +197,16 @@ sub ProcessSimVis3DResourceFiles($$)
             next;
         }
 
+        my $dependencies = $mandatory;
+        $dependencies = $optional if $file =~ /\/examples\//;
+
         foreach (@{$$descr{part}})
         {
-            push @$mandatory, DependencyFromSimVis3DResourceFile $$_{file};
+            push @$dependencies, DependencyFromSimVis3DResourceFile $$_{file};
         }
         foreach (@{$$descr{element}})
         {
-            push @$mandatory, DependencyFromSimVis3DResourceFile $$_{collision_geom} if defined $$_{collision_geom};
+            push @$dependencies, DependencyFromSimVis3DResourceFile $$_{collision_geom} if defined $$_{collision_geom};
         }
     }
 }
@@ -226,7 +235,7 @@ sub DependenciesFromWorkingCopy($$)
 
         my $make = eval { XMLin($_,
                                 KeyAttr => [],
-                                ForceArray => [ "rrlib", "unittest", "testprogram", "finroclibrary", "finrocplugin", "finrocprogram" ],
+                                ForceArray => [ "program", "library", "rrlib", "unittest", "testprogram", "finroclibrary", "finrocplugin", "finrocprogram" ],
                                 ForceContent => [ "sources" ],
                                 NormalizeSpace => 2) };
 
@@ -234,6 +243,12 @@ sub DependenciesFromWorkingCopy($$)
         {
             WARNMSG sprintf "Skipping malformed xml file '%s'.\n", $_;
             next;
+        }
+
+        ProcessTargets $$make{library}, $directory, $language, \@mandatory, \@optional;
+        if ($repository_type eq "finroc")
+        {
+            ProcessTargets $$make{program}, $directory, $language, \@mandatory, \@optional if $repository_name =~ /^(projects|tools)_/;
         }
 
         ProcessTargets $$make{rrlib}, $directory, $language, \@mandatory, \@optional if $repository_type eq "rrlib";
@@ -251,12 +266,12 @@ sub DependenciesFromWorkingCopy($$)
     DEBUGMSG sprintf "collected optional dependencies: %s\n", join ", ", @optional;
 
     my @finroc_files = map { chomp; $_ } `find \"$working_copy\" -iname "*.finroc" -a ! -iname "license.finroc"`;
-    ProcessFinrocFiles \@finroc_files, \@mandatory;
+    ProcessFinrocFiles \@finroc_files, \@mandatory, \@optional;
     @finroc_files = map { chomp; $_ } `find \"$working_copy\" -iname "*.xml"`;
-    ProcessFinrocFiles \@finroc_files, \@mandatory;
+    ProcessFinrocFiles \@finroc_files, \@mandatory, \@optional;
 
     my @simvis3d_resource_files = map { chomp; $_ } `find \"$working_copy\" -iname "*.descr"`;
-    ProcessSimVis3DResourceFiles \@simvis3d_resource_files, \@mandatory;
+    ProcessSimVis3DResourceFiles \@simvis3d_resource_files, \@mandatory, \@optional;
 
     my %seen = ( $repository => 1 );
     @mandatory = grep { !$seen{$_}++ } @mandatory;
