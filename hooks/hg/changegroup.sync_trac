@@ -37,6 +37,6 @@ function abs_path
 
 export HOME=$(printf "%s\n%s\n" "$(abs_path $PWD)" "$(abs_path $SCRIPT_FILENAME)" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1/')
 
-[[ -d "$HOME/trac" ]] && trac-admin "$HOME/trac" mercurial afterRevision $HG_NODE "$(basename $PWD)"
+[[ -d "$HOME/trac" ]] && LC_CTYPE=en_US.UTF-8 trac-admin "$HOME/trac" mercurial afterRevision $HG_NODE "$(basename $PWD)"
 
 exit 0
