@@ -28,7 +28,18 @@
 #
 #----------------------------------------------------------------------
 
-echo $HOME
+function abs_path
+{
+    SOURCE="$1"
+    while [ -h "$SOURCE" ] ; do
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    echo "$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+}
+
+export HOME="$(abs_path ${BASH_SOURCE[0]})/.."
 
 # setup finroc environment from _cloned_ version in repository
 cd $HOME/finroc
