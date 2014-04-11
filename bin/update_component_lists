@@ -159,6 +159,8 @@ foreach my $repository (@repositories)
     FINROC::scm::Checkout $scm, "file://$repository_directory", undef, $working_copy, undef, undef;
 
     my @branches = FINROC::scm::GetBranches $working_copy, undef, undef;
+    my $access = "restricted";
+    $access = "public" if grep { $_ eq "anonymous" } split ",", join "", map { chomp; $_ } `sqlite3 \$FINROC_HOME/../trac/db/trac.db "select value from repository where id = (select id from repository where name = 'name' and value = '$repository') and name = 'readers'"`;
 
     if (@branches)
     {
@@ -173,6 +175,7 @@ foreach my $repository (@repositories)
                               scm => $scm,
                               branch => $branch,
                               license => $license,
+                              access => $access,
                               url => sprintf("%s/%s", $config{scm}{$scm}{base_url}, $repository),
                               manifest => FINROC::scm::GetManifestFromWorkingCopy($working_copy),
                               disk_usage => join("", map { chomp; $_ } `du -s \"$working_copy\" 2> /dev/null | cut -f1`) );
@@ -190,6 +193,7 @@ foreach my $repository (@repositories)
                             scm => $scm,
                             branch => FINROC::scm::GetDefaultBranch $scm,
                             license => "none",
+                            access => $access,
                             url => sprintf("%s/%s", $config{scm}{$scm}{base_url}, $repository),
                             manifest => "",
                             disk_usage => join("", map { chomp; $_ } `du -s \"$working_copy\" 2> /dev/null | cut -f1`),
