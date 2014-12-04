@@ -161,6 +161,7 @@ foreach my $repository (@repositories)
     my @branches = FINROC::scm::GetBranches $working_copy, undef, undef;
     my $access = "restricted";
     $access = "public" if grep { $_ eq "anonymous" } split ",", join "", map { chomp; $_ } `sqlite3 \$FINROC_HOME/../trac/db/trac.db "select value from repository where id = (select id from repository where name = 'name' and value = '$repository') and name = 'readers'"`;
+    my $description = join "", map { chomp; $_ } `sqlite3 \$FINROC_HOME/../trac/db/trac.db "select value from repository where id = (select id from repository where name = 'name' and value = '$repository') and name = 'description'"`;
 
     if (@branches)
     {
@@ -172,6 +173,7 @@ foreach my $repository (@repositories)
             $license =~ s/^license.//;
 
             my %component = ( name => $repository,
+                              description => $description,
                               scm => $scm,
                               branch => $branch,
                               license => $license,
@@ -190,6 +192,7 @@ foreach my $repository (@repositories)
     else
     {
         push @components, { name => $repository,
+                            description => $description,
                             scm => $scm,
                             branch => FINROC::scm::GetDefaultBranch $scm,
                             license => "none",
