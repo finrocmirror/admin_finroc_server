@@ -127,6 +127,7 @@ sub ProcessTargets($$$$$)
 
     foreach (@{$targets})
     {
+        $$_{sources} = { content => $$_{sources} } unless ref $$_{sources};
         my @source_files = ResolveSourceFiles $directory, $$_{sources}{content}, $$_{sources}{exclude};
 
         my $mandatory_list = $mandatory;
@@ -246,10 +247,7 @@ sub DependenciesFromWorkingCopy($$)
         }
 
         ProcessTargets $$make{library}, $directory, $language, \@mandatory, \@optional;
-        if ($repository_type eq "finroc")
-        {
-            ProcessTargets $$make{program}, $directory, $language, \@mandatory, \@optional if $repository_name =~ /^(projects|tools)_/;
-        }
+        ProcessTargets $$make{program}, $directory, $language, \@mandatory, \@optional;
 
         ProcessTargets $$make{rrlib}, $directory, $language, \@mandatory, \@optional if $repository_type eq "rrlib";
         if ($repository_type eq "finroc")
