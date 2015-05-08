@@ -64,7 +64,7 @@ echo "To fork this repository visit the following URL:" >&2
 echo "$TRAC_BASE_URL/repository/fork/$REPOSITORY" >&2
 echo >&2
 echo "Afterwards, push your changes to your fork:" >&2
-echo "e.g. hg push $HG_BASE_URL/$USER/$REPOSITORY" >&2
+echo "e.g. hg push $HG_BASE_URL/$REMOTE_USER/$REPOSITORY" >&2
 echo >&2
 echo "And finally, create a new pull request in trac." >&2
 echo >&2
