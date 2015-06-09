@@ -211,7 +211,7 @@ foreach my $repository (@repositories)
 
 INFOMSG "Done.\n" unless defined $repository;
 
-foreach my $distribution (keys $config{distributions})
+foreach my $distribution (keys %{$config{distributions}})
 {
     my $categories = $config{distributions}{$distribution}{categories};
     foreach my $category (keys %{$categories})
