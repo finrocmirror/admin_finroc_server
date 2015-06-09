@@ -167,7 +167,7 @@ sub ProcessFinrocFiles($$$)
             {
                 push @$dependencies, $dependency;
                 my $dependency_old = $dependency;
-                $dependency =~ s/(finroc|rrlib)_[^_]+$//;
+                $dependency =~ s/_[^_]+$//;
                 last if $dependency eq $dependency_old;
             }
         }
